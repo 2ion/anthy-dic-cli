@@ -41,6 +41,15 @@ void Entry_allocate_strings(Entry *e) {
 #undef ALLOCSTR
 }
 
+void Entry_free(Entry *e) {
+    assert(e != NULL);
+#define FREESTR(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
+    FREESTR(e->sound);
+    FREESTR(e->wordtype);
+    FREESTR(e->spelling);
+#undef FREESTR
+}
+
 Entry* Entry_new(void) {
     Entry *e = (Entry*) malloc(sizeof(Entry));
     assert(e != NULL);
@@ -75,6 +84,19 @@ int Dictionary_append(Dictionary *d, Entry *e) {
     }
     d->p[++(d->last)] = e;
     return 0;
+}
+
+void Dictionary_free(Dictionary *d) {
+    int i;
+    assert(d != NULL);
+    if( d->len == 0 )
+        return;
+    for( i = 0; i <= d->last; ++i ) {
+        if( d->p[i] == NULL )
+            continue;
+        Entry_free(d->p[i]);
+        free(d->p[i]);
+    }
 }
 
 int readdic(Dictionary *d) {
