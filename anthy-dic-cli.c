@@ -35,6 +35,11 @@ typedef struct {
     size_t len;
 } Dictionary;
 
+void Entry_print(int index, const Entry *e) {
+    printf("%04d: sound=%s @ wordtype=%s @ spelling=%s @ frequency=%04d\n",
+            index, e->sound.p, e->wordtype.p, e->spelling.p, e->freq);
+}
+
 void Entry_allocate_strings(Entry *e) {
     assert(e != NULL);
 #define ALLOCSTR(ptr) (ptr).p=(char*)malloc(sizeof(char)*BUFSIZE);assert((ptr).p!=NULL);(ptr).len=BUFSIZE
@@ -113,6 +118,7 @@ int readdic(Dictionary *d) {
         return -1;
     }
     do {
+            
         e = Entry_new();
         if( anthy_priv_dic_get_index(e->sound.p, e->sound.len) &&
                  anthy_priv_dic_get_wtype(e->wordtype.p, e->wordtype.len) && 
@@ -129,11 +135,12 @@ int readdic(Dictionary *d) {
                     return -1;
                 }
             }
-           if( Dictionary_append(d, e) != 0 ) {
-               fprintf(stderr, "readdic(): could not append to dictionary\n");
-               Entry_free(e);
-               return -1;
-           }
+            if( Dictionary_append(d, e) != 0 ) {
+                fprintf(stderr, "readdic(): could not append to dictionary\n");
+                Entry_free(e);
+                return -1;
+            }
+            Entry_print(d->last, (const Entry*) e);
         }
     } while( anthy_priv_dic_select_next_entry() == 0 );
 
@@ -151,5 +158,6 @@ int main(int argc, char **argv) {
     readdic(&dic);
 
     anthy_dic_util_quit();
+    Dictionary_free(&dic);
     return 0;
 }
