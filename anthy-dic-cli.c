@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 #ifndef BUFSIZE
 #define BUFSIZE (512)
@@ -13,6 +14,8 @@
 #endif
 
 int g_anthy_version = 0;
+const int g_minfreq = 1;
+const int g_maxfreq = 1000;
 
 typedef struct {
     char *p;
@@ -101,16 +104,37 @@ void Dictionary_free(Dictionary *d) {
 
 int readdic(Dictionary *d) {
     int v;
-    Entry *ebuf;
+    Entry *e;
     if( (v = anthy_priv_dic_select_first_entry()) == -1 ) {
         fprintf(stderr, "Dictionary is empty.\n");
-        return EXIT_FAILURE;
+        return 0;
     } else if( v == -3 && g_anthy_version >= 7716 ) {
         fprintf(stderr, "Anthy could not access its private directory.\n");
-        return EXIT_FAILURE;
+        return -1;
     }
     do {
-        ebuf = Entry_new();
+        e = Entry_new();
+        if( anthy_priv_dic_get_index(e->sound.p, e->sound.len) &&
+                 anthy_priv_dic_get_wtype(e->wordtype.p, e->wordtype.len) && 
+                 anthy_priv_dic_get_word(e->spelling.p, e->spelling.len) ) {
+            e->freq = anthy_priv_dic_get_freq();
+            if( e->freq < g_minfreq )
+                e->freq = g_minfreq;
+            else if( e->freq > g_maxfreq )
+                e->freq = g_maxfreq;
+            if( g_anthy_version < 7710 && e->spelling.p[0] == ' ' ) {
+                // Handle anthy bug: returns entry with a leading whitespace
+                if( memmove(e->spelling.p, e->spelling.p+1, e->spelling.len-1) == NULL ) {
+                    Entry_free(e);
+                    return -1;
+                }
+            }
+           if( Dictionary_append(d, e) != 0 ) {
+               fprintf(stderr, "readdic(): could not append to dictionary\n");
+               Entry_free(e);
+               return -1;
+           }
+        }
     } while( anthy_priv_dic_select_next_entry() == 0 );
 
     return EXIT_SUCCESS;
