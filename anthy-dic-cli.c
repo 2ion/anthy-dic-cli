@@ -6,11 +6,11 @@
 #include <string.h>
 
 #ifndef BUFSIZE
-#define BUFSIZE (512)
+#define BUFSIZE (512) // buffer length for dictionary fields
 #endif
 
 #ifndef DICCHUNK
-#define DICCHUNK (16)
+#define DICCHUNK (16) // allocate X dictionary entries at a time
 #endif
 
 int g_anthy_version = 0;
@@ -114,7 +114,7 @@ int readdic(Dictionary *d) {
         fprintf(stderr, "Dictionary is empty.\n");
         return 0;
     } else if( v == -3 && g_anthy_version >= 7716 ) {
-        fprintf(stderr, "Anthy could not access its private directory.\n");
+        fprintf(stderr, "Anthy could not access the private dictionary!\n");
         return -1;
     }
     do {
@@ -144,7 +144,7 @@ int readdic(Dictionary *d) {
         }
     } while( anthy_priv_dic_select_next_entry() == 0 );
 
-    return EXIT_SUCCESS;
+    return 0;
 }
 
 int main(int argc, char **argv) {
