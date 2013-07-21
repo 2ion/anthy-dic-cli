@@ -1,9 +1,10 @@
-#include <anthy/anthy.h>
-#include <anthy/dicutil.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
+#include <anthy/anthy.h>
+#include <anthy/dicutil.h>
 
 #ifndef BUFSIZE
 #define BUFSIZE (512) // buffer length for dictionary fields
@@ -13,9 +14,13 @@
 #define DICCHUNK (16) // allocate X dictionary entries at a time
 #endif
 
+#define ALLOCSTR(ptr) (ptr).p=(char*)malloc(sizeof(char)*BUFSIZE);assert((ptr).p!=NULL);(ptr).len=BUFSIZE
+#define FREESTR(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
+
 int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
+const char *g_optstring = "y:s:t:f:amdg";
 
 typedef struct {
     char *p;
@@ -35,6 +40,17 @@ typedef struct {
     size_t len;
 } Dictionary;
 
+enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_NULL };
+
+typedef struct {
+    unsigned int cmask;
+    int verb;
+    String *yomi;
+    String *wordtype;
+    String *spelling;
+    int freq;
+} CLIMap;
+
 void Entry_print(int index, const Entry *e) {
     printf("%04d: sound=%s @ wordtype=%s @ spelling=%s @ frequency=%04d\n",
             index, e->sound.p, e->wordtype.p, e->spelling.p, e->freq);
@@ -42,20 +58,16 @@ void Entry_print(int index, const Entry *e) {
 
 void Entry_allocate_strings(Entry *e) {
     assert(e != NULL);
-#define ALLOCSTR(ptr) (ptr).p=(char*)malloc(sizeof(char)*BUFSIZE);assert((ptr).p!=NULL);(ptr).len=BUFSIZE
     ALLOCSTR(e->sound);
     ALLOCSTR(e->wordtype);
     ALLOCSTR(e->spelling);
-#undef ALLOCSTR
 }
 
 void Entry_free(Entry *e) {
     assert(e != NULL);
-#define FREESTR(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
     FREESTR(e->sound);
     FREESTR(e->wordtype);
     FREESTR(e->spelling);
-#undef FREESTR
 }
 
 Entry* Entry_new(void) {
@@ -147,8 +159,59 @@ int readdic(Dictionary *d) {
     return 0;
 }
 
+void usage(void) {
+    printf( "Usage: anthy-dic-cli <verb> [<verb-options>]\n"
+            "Verbs: -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]\n"
+            "       -m <add-like filter expression, '-+' denotes end of criteria>\n"
+            "       -d <add-like filter expression>\n"
+            "       -g <add-like filter expression>\n"
+            "       -h\n");
+}
+
 int main(int argc, char **argv) {
+    if( argc < 2 ) {
+        puts("Too few arguments.");
+        usage();
+        return -1;
+    }
+    if( strcmp(argv[1], "-h") == 0 ) {
+        usage();
+        return 0;
+    }
+
+    CLIMap cmap = { 0, VERB_NULL, NULL, NULL, NULL, -1 };
     Dictionary dic = { .p = NULL, .last = -1, .len = 0 };
+    int endofcritera = 0;
+    int c;
+
+#define VERB_NO_OVERWRITE if(cmap.verb!=VERB_NULL){\
+    fprintf(stderr, "%s: error: option '%c' would override a previously specified verb.\n",\
+            argv[0], c); return -1;}
+    while( (c = getopt(argc, argv, g_optstring)) != -1 )
+        switch( c ) {
+            case 'a':
+                VERB_NO_OVERWRITE;
+                cmap.verb = VERB_ADD;
+                break;
+            case 'm':
+                VERB_NO_OVERWRITE;
+                cmap.verb = VERB_MOD;
+                break;
+            case 'd':
+                VERB_NO_OVERWRITE;
+                cmap.verb = VERB_DEL;
+                break;
+            case 'g':
+                VERB_NO_OVERWRITE;
+                cmap.verb = VERB_GREP;
+                break;
+            case '?':
+                // not reached, because opterr!=0
+                return -1;
+            default:
+                return -255;
+        }
+#undef VERB_NO_OVERWRITE
 
     anthy_dic_util_init();
     anthy_dic_util_set_encoding(ANTHY_UTF8_ENCODING);
@@ -159,5 +222,6 @@ int main(int argc, char **argv) {
 
     anthy_dic_util_quit();
     Dictionary_free(&dic);
+
     return 0;
 }
