@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <values.h>
 #include <assert.h>
 #include <string.h>
 #include <unistd.h>
@@ -16,11 +17,15 @@
 
 #define ALLOCSTR(ptr) (ptr).p=(char*)malloc(sizeof(char)*BUFSIZE);assert((ptr).p!=NULL);(ptr).len=BUFSIZE
 #define FREESTR(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
+#define FREESTRING(ptr) free((ptr)->p);(ptr)->len=0;
+#define FREESTR_IFNOTNULL(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
+#define STRISNULL(ptr) ((ptr).p==NULL ? 1 : 0)
+#define STRINGISNULL(ptr) ((ptr)->p==NULL ? 1 : 0)
 
 int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
-const char *g_optstring = "y:s:t:f:amdg";
+const char *g_optstring = "y:s:t:f:amdg+";
 
 typedef struct {
     char *p;
@@ -41,6 +46,7 @@ typedef struct {
 } Dictionary;
 
 enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_NULL };
+enum { C_YOMI = 1<<0, C_WT = 1<<1, C_SPELLING = 1<<2, C_FREQ = 1<<3 }; // CLIMAP::cmask
 
 typedef struct {
     unsigned int cmask;
@@ -48,8 +54,15 @@ typedef struct {
     String *yomi;
     String *wordtype;
     String *spelling;
-    int freq;
+    int frequency;
 } CLIMap;
+
+void CLIMap_free(CLIMap *map) {
+    assert(map != NULL);
+    FREESTRING(map->yomi);
+    FREESTRING(map->spelling);
+    FREESTRING(map->wordtype);
+}
 
 void Entry_print(int index, const Entry *e) {
     printf("%04d: sound=%s @ wordtype=%s @ spelling=%s @ frequency=%04d\n",
@@ -159,6 +172,16 @@ int readdic(Dictionary *d) {
     return 0;
 }
 
+String* toString(const char *str) {
+    String *s = (String*) malloc(sizeof(String));
+    assert(s != NULL);
+    s->len = strlen(str) + 1;
+    s->p = (char*) malloc(s->len);
+    assert(s->p != NULL);
+    strncpy(s->p, str, s->len);
+    return s;
+}
+
 void usage(void) {
     printf( "Usage: anthy-dic-cli <verb> [<verb-options>]\n"
             "Verbs: -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]\n"
@@ -181,12 +204,18 @@ int main(int argc, char **argv) {
 
     CLIMap cmap = { 0, VERB_NULL, NULL, NULL, NULL, -1 };
     Dictionary dic = { .p = NULL, .last = -1, .len = 0 };
-    int endofcritera = 0;
+    int endofcriteria = 0;
     int c;
+    long int freqtmp;
+    int err = 0;
 
 #define VERB_NO_OVERWRITE if(cmap.verb!=VERB_NULL){\
     fprintf(stderr, "%s: error: option '%c' would override a previously specified verb.\n",\
             argv[0], c); return -1;}
+#define CHECK_VERB_NOT_SET if(cmap.verb==VERB_NULL){\
+    fprintf(stderr, "%s: error: a verb must be specified before '%c'.\n",\
+            argv[0], c); return -1;}
+#define MAYBE_CRITERIUM(cval) if(cmap.verb==VERB_MOD && endofcriteria==0){cmap.cmask|=(cval);}
     while( (c = getopt(argc, argv, g_optstring)) != -1 )
         switch( c ) {
             case 'a':
@@ -205,13 +234,68 @@ int main(int argc, char **argv) {
                 VERB_NO_OVERWRITE;
                 cmap.verb = VERB_GREP;
                 break;
+            case '+':
+                CHECK_VERB_NOT_SET;
+                if( cmap.verb == VERB_MOD )
+                    endofcriteria = 1;
+                else
+                    fprintf(stderr, "Ignored option without effect: %c\n", c);
+                break;
+            case 'y':
+                CHECK_VERB_NOT_SET;
+                MAYBE_CRITERIUM(C_YOMI);
+                if( STRINGISNULL(cmap.yomi) == 0 ) {
+                    fprintf(stderr, "Warning: overriding previous argument of -y with '%s'\n",
+                            optarg);
+                    FREESTRING(cmap.yomi);
+                }
+                cmap.yomi = toString((const char*) optarg);
+                break;
+            case 's':
+                CHECK_VERB_NOT_SET;
+                MAYBE_CRITERIUM(C_SPELLING);
+                if( STRINGISNULL(cmap.spelling) == 0 ) {
+                    fprintf(stderr, "Warning: overriding previous argument of -s with '%s'\n",
+                            optarg);
+                    FREESTRING(cmap.spelling);
+                }
+                cmap.spelling = toString((const char*) optarg);
+                break;
+            case 't':
+                CHECK_VERB_NOT_SET;
+                MAYBE_CRITERIUM(C_WT);
+                if( STRINGISNULL(cmap.wordtype) == 0 ) {
+                    fprintf(stderr, "Warning: overriding previous argument of -t with '%s'\n",
+                            optarg);
+                    FREESTRING(cmap.wordtype);
+                }
+                cmap.wordtype = toString((const char*) optarg);
+                break;
+            case 'f':
+                CHECK_VERB_NOT_SET;
+                MAYBE_CRITERIUM(C_FREQ);
+                freqtmp = strtol((const char*) optarg, NULL, 10);
+                if( freqtmp == LONG_MIN || freqtmp == LONG_MAX ) {
+                    // over-|underflow
+                    fprintf(stderr, "Error: conversion of frequency value to string failed: %s\n", optarg);
+                    err = -1;
+                    goto MAIN_cleanup_cmap;
+                }
+                cmap.frequency = (int) freqtmp;
+                if( cmap.frequency > g_maxfreq )
+                    cmap.frequency = g_maxfreq;
+                else if( cmap.frequency < g_minfreq )
+                    cmap.frequency = g_minfreq;
+                break;
             case '?':
                 // not reached, because opterr!=0
-                return -1;
+                goto MAIN_cleanup_cmap;
             default:
-                return -255;
+                goto MAIN_cleanup_cmap;
         }
 #undef VERB_NO_OVERWRITE
+#undef CHECK_VERB_NOT_SET
+#undef MAYBE_CRITERIUM
 
     anthy_dic_util_init();
     anthy_dic_util_set_encoding(ANTHY_UTF8_ENCODING);
@@ -222,6 +306,8 @@ int main(int argc, char **argv) {
 
     anthy_dic_util_quit();
     Dictionary_free(&dic);
+MAIN_cleanup_cmap:
+    CLIMap_free(&cmap);
 
-    return 0;
+    return err;
 }
