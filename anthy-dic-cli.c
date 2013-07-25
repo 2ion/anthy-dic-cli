@@ -44,6 +44,7 @@ int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
 const char *g_optstring = "y:s:t:f:amdg+";
+void *g_unfree = NULL;
 
 typedef struct {
     char *p;
@@ -106,6 +107,17 @@ Entry* Entry_new(void) {
     assert(e != NULL);
     Entry_allocate_strings(e);
     return e;
+}
+
+String* copyString(String *dest, const String *src) {
+    assert(dest != NULL && src != NULL);
+    if( dest->len < src->len ) {
+        dest->p = (char*) realloc(dest->p, src->len);
+        assert(dest->p != NULL);
+        dest->len = src->len;
+    }
+    strncpy(dest->p, (const char*) src->p, src->len);
+    return dest;
 }
 
 int Dictionary_resize(Dictionary *d) {
@@ -198,6 +210,21 @@ String* toString(const char *str) {
     assert(s->p != NULL);
     strncpy(s->p, str, s->len);
     return s;
+}
+
+int verb_add(Dictionary *dic, const CLIMap *map) {
+    Entry *e = Entry_new();
+    int err = 0;
+    copyString(&e->spelling, map->spelling);
+    copyString(&e->sound, map->yomi);
+    copyString(&e->wordtype, map->wordtype);
+    e->freq = map->frequency;
+    err = Dictionary_append(dic, e);
+    if( err != 0 ) {
+        g_unfree = (void*) e;
+        return err;
+    }
+    return 0;
 }
 
 void usage(void) {
@@ -319,8 +346,13 @@ int main(int argc, char **argv) {
     anthy_dic_util_set_encoding(ANTHY_UTF8_ENCODING);
     g_anthy_version = atoi(anthy_get_version_string());
     assert(g_anthy_version != 0);
-
     readdic(&dic);
+
+    switch( cmap.verb ) {
+        case VERB_ADD:
+            err = verb_add(&dic, &cmap);
+            break;
+    }
 
     anthy_dic_util_quit();
     Dictionary_free(&dic);
