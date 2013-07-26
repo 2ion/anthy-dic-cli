@@ -44,7 +44,7 @@ int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
 const int g_deffreq = 500;
-const char *g_optstring = "y:s:t:f:amdg+";
+const char *g_optstring = "y:s:t:f:amdgl+";
 
 /* types */
 
@@ -76,7 +76,7 @@ typedef struct {
     int frequency;
 } CLIMap;
 
-enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_NULL };
+enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_DICLEN, VERB_NULL };
 enum { C_YOMI = 1<<0, C_WT = 1<<1, C_SPELLING = 1<<2, C_FREQ = 1<<3 }; // CLIMAP::cmask
 
 /* prototypes */
@@ -93,7 +93,9 @@ static int Dictionary_resize(Dictionary*);
 static int Dictionary_append(Dictionary*, Entry*);
 static void Dictionary_free(Dictionary*);
 static int Dictionary_load(Dictionary*);
+static int Dictionary_save(Dictionary*);
 static int verb_add(const CLIMap*, Dictionary*);
+static int verb_diclen(const Dictionary*);
 static void usage(void);
 
 /* implementation */
@@ -255,12 +257,19 @@ static int verb_add(const CLIMap *map, Dictionary *dic) {
     return 0;
 }
 
+static int verb_diclen(const Dictionary *d) {
+    if( printf("%d\n", (int) d->len) < 0 )
+        return -1;
+    return 0;
+}
+
 static void usage(void) {
     printf( "Usage: anthy-dic-cli <verb> [<verb-options>]\n"
-            "Verbs: -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]\n"
-            "       -m <add-like filter expression, '-+' denotes end of criteria>\n"
-            "       -d <add-like filter expression>\n"
-            "       -g <add-like filter expression>\n"
+            "Verbs: [add]           -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]\n"
+            "       [modify]        -m <add-like filter expression, '-+' denotes end of criteria>\n"
+            "       [delete]        -d <add-like filter expression>\n"
+            "       [grep]          -g <add-like filter expression>\n"
+            "       [dict length]   -l\n"
             "       -h\n");
 }
 
@@ -306,6 +315,10 @@ int main(int argc, char **argv) {
             case 'g':
                 VERB_NO_OVERWRITE;
                 cmap.verb = VERB_GREP;
+                break;
+            case 'l':
+                VERB_NO_OVERWRITE;
+                cmap.verb = VERB_DICLEN;
                 break;
             case '+':
                 CHECK_VERB_NOT_SET;
@@ -380,6 +393,12 @@ int main(int argc, char **argv) {
                 fprintf(stderr,
                         "Error: failed to add entry to the dictionary: %s--%s\n",
                         CSTR(cmap.yomi), CSTR(cmap.spelling));
+            break;
+        case VERB_DICLEN:
+            err = verb_diclen(&dic);
+            if( err != 0 )
+                fprintf(stderr,
+                        "Warning: call to printf() returned an error\n");
             break;
     }
 
