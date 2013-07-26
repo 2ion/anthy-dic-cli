@@ -258,7 +258,11 @@ static int verb_add(const CLIMap *map, Dictionary *dic) {
 }
 
 static int verb_diclen(const Dictionary *d) {
+<<<<<<< HEAD
     if( printf("%d\n", d->last) < 0 )
+=======
+    if( printf("%d\n", (int) d->len) < 0 )
+>>>>>>> d2dc431618c88041e6603b200d8acc7ac8070e5a
         return -1;
     return 0;
 }
