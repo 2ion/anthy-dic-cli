@@ -63,6 +63,7 @@ typedef struct {
 typedef struct {
     Entry **p;
     int last;
+    int oldlast; // last entry loaded from Anthy
     size_t len;
 } Dictionary;
 
@@ -202,7 +203,6 @@ static int Dictionary_load(Dictionary *d) {
         return -1;
     }
     do {
-            
         e = Entry_new();
         if( anthy_priv_dic_get_index(e->sound.p, e->sound.len) &&
                  anthy_priv_dic_get_wtype(e->wordtype.p, e->wordtype.len) && 
@@ -223,7 +223,7 @@ static int Dictionary_load(Dictionary *d) {
             Entry_print(d->last, (const Entry*) e);
         }
     } while( anthy_priv_dic_select_next_entry() == 0 );
-
+    d->oldlast = d->last; 
     return 0;
 }
 
