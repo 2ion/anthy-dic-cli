@@ -43,6 +43,7 @@
 int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
+const int g_deffreq = 500;
 const char *g_optstring = "y:s:t:f:amdg+";
 
 /* types */
@@ -241,7 +242,7 @@ static int verb_add(const CLIMap *map, Dictionary *dic) {
         return -2;
     Entry *e = Entry_new();
     int err = 0;
-    e->freq = map->frequency == -1 ? 500 : map->frequency;
+    e->freq = map->frequency == -1 ? g_deffreq : map->frequency;
     String_copy(&e->spelling, map->spelling);
     String_copy(&e->sound, map->yomi);
     String_copy(&e->wordtype, map->wordtype);
