@@ -354,10 +354,7 @@ int main(int argc, char **argv) {
                     goto MAIN_cleanup_cmap;
                 }
                 cmap.frequency = (int) freqtmp;
-                if( cmap.frequency > g_maxfreq )
-                    cmap.frequency = g_maxfreq;
-                else if( cmap.frequency < g_minfreq )
-                    cmap.frequency = g_minfreq;
+                cmap.frequency = normalize_freq((int) freqtmp);
                 break;
             case '?':
                 // not reached, because opterr!=0
