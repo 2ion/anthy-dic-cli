@@ -24,27 +24,28 @@
 #include <unistd.h>
 #include <anthy/anthy.h>
 #include <anthy/dicutil.h>
-
 #ifndef BUFSIZE
 #define BUFSIZE (512) // buffer length for dictionary fields
 #endif
-
 #ifndef DICCHUNK
 #define DICCHUNK (16) // allocate X dictionary entries at a time
 #endif
-
 #define ALLOCSTR(ptr) (ptr).p=(char*)malloc(sizeof(char)*BUFSIZE);assert((ptr).p!=NULL);(ptr).len=BUFSIZE
 #define FREESTR(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
-#define FREESTRING(ptr) free((ptr)->p);(ptr)->len=0;
+#define FREESTRING(ptr) if((ptr)!=NULL){free((ptr)->p);(ptr)->len=0;}
 #define FREESTR_IFNOTNULL(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
 #define STRISNULL(ptr) ((ptr).p==NULL ? 1 : 0)
 #define STRINGISNULL(ptr) ((ptr)->p==NULL ? 1 : 0)
+#define CSTR(ptr) ((ptr) != NULL ? (ptr)->p : NULL)
+
+/* globals */
 
 int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
 const char *g_optstring = "y:s:t:f:amdg+";
-void *g_unfree = NULL;
+
+/* types */
 
 typedef struct {
     char *p;
@@ -64,9 +65,6 @@ typedef struct {
     size_t len;
 } Dictionary;
 
-enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_NULL };
-enum { C_YOMI = 1<<0, C_WT = 1<<1, C_SPELLING = 1<<2, C_FREQ = 1<<3 }; // CLIMAP::cmask
-
 typedef struct {
     unsigned int cmask;
     int verb;
@@ -76,40 +74,70 @@ typedef struct {
     int frequency;
 } CLIMap;
 
-void CLIMap_free(CLIMap *map) {
+enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_NULL };
+enum { C_YOMI = 1<<0, C_WT = 1<<1, C_SPELLING = 1<<2, C_FREQ = 1<<3 }; // CLIMAP::cmask
+
+/* prototypes */
+
+static inline int normalize_freq(int freq);
+static void CLIMap_free(CLIMap*);
+static void Entry_print(int index, const Entry*);
+static void Entry_allocate_strings(Entry*);
+static void Entry_free(Entry*);
+static Entry* Entry_new(void);
+static String* String_copy(String*, const String*);
+static String* String_fromChar(const char*);
+static int Dictionary_resize(Dictionary*);
+static int Dictionary_append(Dictionary*, Entry*);
+static void Dictionary_free(Dictionary*);
+static int Dictionary_load(Dictionary*);
+static int verb_add(const CLIMap*, Dictionary*);
+static void usage(void);
+
+/* implementation */
+
+static inline int normalize_freq(int f) {
+    if( f < g_minfreq )
+        return g_minfreq;
+    else if( f > g_maxfreq)
+        return g_maxfreq;
+    return f;
+}
+
+static void CLIMap_free(CLIMap *map) {
     assert(map != NULL);
     FREESTRING(map->yomi);
     FREESTRING(map->spelling);
     FREESTRING(map->wordtype);
 }
 
-void Entry_print(int index, const Entry *e) {
+static void Entry_print(int index, const Entry *e) {
     printf("%04d: sound=%s @ wordtype=%s @ spelling=%s @ frequency=%04d\n",
             index, e->sound.p, e->wordtype.p, e->spelling.p, e->freq);
 }
 
-void Entry_allocate_strings(Entry *e) {
+static void Entry_allocate_strings(Entry *e) {
     assert(e != NULL);
     ALLOCSTR(e->sound);
     ALLOCSTR(e->wordtype);
     ALLOCSTR(e->spelling);
 }
 
-void Entry_free(Entry *e) {
+static void Entry_free(Entry *e) {
     assert(e != NULL);
     FREESTR(e->sound);
     FREESTR(e->wordtype);
     FREESTR(e->spelling);
 }
 
-Entry* Entry_new(void) {
+static Entry* Entry_new(void) {
     Entry *e = (Entry*) malloc(sizeof(Entry));
     assert(e != NULL);
     Entry_allocate_strings(e);
     return e;
 }
 
-String* copyString(String *dest, const String *src) {
+static String* String_copy(String *dest, const String *src) {
     assert(dest != NULL && src != NULL);
     if( dest->len < src->len ) {
         dest->p = (char*) realloc(dest->p, src->len);
@@ -120,7 +148,7 @@ String* copyString(String *dest, const String *src) {
     return dest;
 }
 
-int Dictionary_resize(Dictionary *d) {
+static int Dictionary_resize(Dictionary *d) {
     assert(d != NULL);
     if( d->len == 0 ) {
         d->p = (Entry**) malloc(DICCHUNK * sizeof(Entry));
@@ -139,7 +167,7 @@ int Dictionary_resize(Dictionary *d) {
     return 0;
 }
 
-int Dictionary_append(Dictionary *d, Entry *e) {
+static int Dictionary_append(Dictionary *d, Entry *e) {
     assert(d != NULL && e != NULL);
     if( Dictionary_resize(d) != 0 ) {
         fprintf(stderr, "Dictionary_append(): memory allocation error\n");
@@ -149,7 +177,7 @@ int Dictionary_append(Dictionary *d, Entry *e) {
     return 0;
 }
 
-void Dictionary_free(Dictionary *d) {
+static void Dictionary_free(Dictionary *d) {
     int i;
     assert(d != NULL);
     if( d->len == 0 )
@@ -162,7 +190,7 @@ void Dictionary_free(Dictionary *d) {
     }
 }
 
-int readdic(Dictionary *d) {
+static int Dictionary_load(Dictionary *d) {
     int v;
     Entry *e;
     if( (v = anthy_priv_dic_select_first_entry()) == -1 ) {
@@ -178,11 +206,7 @@ int readdic(Dictionary *d) {
         if( anthy_priv_dic_get_index(e->sound.p, e->sound.len) &&
                  anthy_priv_dic_get_wtype(e->wordtype.p, e->wordtype.len) && 
                  anthy_priv_dic_get_word(e->spelling.p, e->spelling.len) ) {
-            e->freq = anthy_priv_dic_get_freq();
-            if( e->freq < g_minfreq )
-                e->freq = g_minfreq;
-            else if( e->freq > g_maxfreq )
-                e->freq = g_maxfreq;
+            e->freq = normalize_freq(anthy_priv_dic_get_freq());
             if( g_anthy_version < 7710 && e->spelling.p[0] == ' ' ) {
                 // Handle anthy bug: returns entry with a leading whitespace
                 if( memmove(e->spelling.p, e->spelling.p+1, e->spelling.len-1) == NULL ) {
@@ -191,7 +215,7 @@ int readdic(Dictionary *d) {
                 }
             }
             if( Dictionary_append(d, e) != 0 ) {
-                fprintf(stderr, "readdic(): could not append to dictionary\n");
+                fprintf(stderr, "Dictionary_load(*): could not append to dictionary\n");
                 Entry_free(e);
                 return -1;
             }
@@ -202,7 +226,7 @@ int readdic(Dictionary *d) {
     return 0;
 }
 
-String* toString(const char *str) {
+static String* String_fromChar(const char *str) {
     String *s = (String*) malloc(sizeof(String));
     assert(s != NULL);
     s->len = strlen(str) + 1;
@@ -212,22 +236,25 @@ String* toString(const char *str) {
     return s;
 }
 
-int verb_add(Dictionary *dic, const CLIMap *map) {
+static int verb_add(const CLIMap *map, Dictionary *dic) {
+    if( STRINGISNULL(map->spelling) || STRINGISNULL(map->yomi) )
+        return -2;
     Entry *e = Entry_new();
     int err = 0;
-    copyString(&e->spelling, map->spelling);
-    copyString(&e->sound, map->yomi);
-    copyString(&e->wordtype, map->wordtype);
+    e->freq = map->frequency == -1 ? 500 : map->frequency;
+    String_copy(&e->spelling, map->spelling);
+    String_copy(&e->sound, map->yomi);
+    String_copy(&e->wordtype, map->wordtype);
     e->freq = map->frequency;
     err = Dictionary_append(dic, e);
     if( err != 0 ) {
-        g_unfree = (void*) e;
+        Entry_free(e);
         return err;
     }
     return 0;
 }
 
-void usage(void) {
+static void usage(void) {
     printf( "Usage: anthy-dic-cli <verb> [<verb-options>]\n"
             "Verbs: -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]\n"
             "       -m <add-like filter expression, '-+' denotes end of criteria>\n"
@@ -294,7 +321,7 @@ int main(int argc, char **argv) {
                             optarg);
                     FREESTRING(cmap.yomi);
                 }
-                cmap.yomi = toString((const char*) optarg);
+                cmap.yomi = String_fromChar((const char*) optarg);
                 break;
             case 's':
                 CHECK_VERB_NOT_SET;
@@ -304,7 +331,7 @@ int main(int argc, char **argv) {
                             optarg);
                     FREESTRING(cmap.spelling);
                 }
-                cmap.spelling = toString((const char*) optarg);
+                cmap.spelling = String_fromChar((const char*) optarg);
                 break;
             case 't':
                 CHECK_VERB_NOT_SET;
@@ -314,7 +341,7 @@ int main(int argc, char **argv) {
                             optarg);
                     FREESTRING(cmap.wordtype);
                 }
-                cmap.wordtype = toString((const char*) optarg);
+                cmap.wordtype = String_fromChar((const char*) optarg);
                 break;
             case 'f':
                 CHECK_VERB_NOT_SET;
@@ -346,11 +373,15 @@ int main(int argc, char **argv) {
     anthy_dic_util_set_encoding(ANTHY_UTF8_ENCODING);
     g_anthy_version = atoi(anthy_get_version_string());
     assert(g_anthy_version != 0);
-    readdic(&dic);
+    Dictionary_load(&dic);
 
     switch( cmap.verb ) {
         case VERB_ADD:
-            err = verb_add(&dic, &cmap);
+            err = verb_add(&cmap, &dic);
+            if( err != 0 )
+                fprintf(stderr,
+                        "Error: failed to add entry to the dictionary: %s--%s\n",
+                        CSTR(cmap.yomi), CSTR(cmap.spelling));
             break;
     }
 
