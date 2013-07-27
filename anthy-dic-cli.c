@@ -25,7 +25,7 @@
 #include <anthy/anthy.h>
 #include <anthy/dicutil.h>
 #ifndef BUFSIZE
-#define BUFSIZE (512) // buffer length for dictionary fields
+#define BUFSIZE (255) // buffer length for dictionary fields
 #endif
 #ifndef DICCHUNK
 #define DICCHUNK (100) // allocate X dictionary entries at a time
@@ -45,6 +45,7 @@ const int g_minfreq = 1;
 const int g_maxfreq = 1000;
 const int g_deffreq = 500;
 const char *g_optstring = "y:s:t:f:amdglD+";
+const char *g_default_wordtype = "wordtype";
 
 /* types */
 
@@ -88,7 +89,9 @@ static void Entry_allocate_strings(Entry*);
 static void Entry_free(Entry*);
 static Entry* Entry_new(void);
 static String* String_copy(String*, const String*);
+static String* String_copy_free_src(String*, String*);
 static String* String_fromChar(const char*);
+static void String_allocate(String*);
 static int Dictionary_resize(Dictionary*);
 static int Dictionary_append(Dictionary*, Entry*);
 static void Dictionary_free(Dictionary*);
@@ -122,10 +125,10 @@ static void Entry_print(int index, const Entry *e) {
 }
 
 static void Entry_allocate_strings(Entry *e) {
-    assert(e != NULL);
-    ALLOCSTR(e->sound);
-    ALLOCSTR(e->wordtype);
-    ALLOCSTR(e->spelling);
+    String_allocate(&e->sound);
+    puts("alloc:sound");
+    String_allocate(&e->wordtype);
+    String_allocate(&e->spelling);
 }
 
 static void Entry_free(Entry *e) {
@@ -135,10 +138,21 @@ static void Entry_free(Entry *e) {
     FREESTR(e->spelling);
 }
 
+static inline void String_allocate(String *s) {
+    puts("String_allocate()");
+    assert(s != NULL);
+    s->p = malloc(sizeof(char) * BUFSIZE);
+    assert(s->p != NULL);
+}
+
 static Entry* Entry_new(void) {
-    Entry *e = (Entry*) malloc(sizeof(Entry));
+    puts("Entry_new()");
+    Entry *e = malloc(sizeof(Entry));
+    puts("malloc() -> e");
     assert(e != NULL);
+    puts("About to call: Entry_allocate_strings()");
     Entry_allocate_strings(e);
+    puts("Entry_new(): made entry");
     return e;
 }
 
@@ -151,6 +165,12 @@ static String* String_copy(String *dest, const String *src) {
     }
     strncpy(dest->p, (const char*) src->p, src->len);
     return dest;
+}
+
+static String* String_copy_free_src(String *dst, String *src) {
+    String *ret = String_copy(dst, (const String*) src);
+    FREESTRING(src);
+    return ret;
 }
 
 static int Dictionary_resize(Dictionary *d) {
@@ -249,20 +269,26 @@ static String* String_fromChar(const char *str) {
 }
 
 static int verb_add(const CLIMap *map, Dictionary *dic) {
-    if( STRINGISNULL(map->spelling) || STRINGISNULL(map->yomi) )
-        return -2;
+    puts("verb_add()");
+    puts("About to call Entry_new()");
     Entry *e = Entry_new();
     int err = 0;
-    e->freq = map->frequency == -1 ? g_deffreq : map->frequency;
-    String_copy(&e->spelling, map->spelling);
-    String_copy(&e->sound, map->yomi);
-    String_copy(&e->wordtype, map->wordtype);
+    puts("verb_add()");
     e->freq = map->frequency;
+    puts(map->spelling->p);
+    String_copy(&e->spelling, map->spelling);
+    puts("copied spelling");
+    String_copy(&e->sound, map->yomi);
+    puts("copied sound");
+    String_copy(&e->wordtype, map->wordtype);
+    puts("copied wordtype");
     err = Dictionary_append(dic, e);
     if( err != 0 ) {
         Entry_free(e);
         return err;
     }
+    printf("add: yomi=%s, spelling=%s, wordtype=%s, frequency=%d\n",
+            e->sound.p, e->spelling.p, e->wordtype.p, e->freq);
     return 0;
 }
 
@@ -357,7 +383,8 @@ int main(int argc, char **argv) {
             case 'y':
                 CHECK_VERB_NOT_SET;
                 MAYBE_CRITERIUM(C_YOMI);
-                if( STRINGISNULL(cmap.yomi) == 0 ) {
+                if( cmap.yomi != NULL ) {
+                    puts("STRINGISNULL");
                     fprintf(stderr, "Warning: overriding previous argument of -y with '%s'\n",
                             optarg);
                     FREESTRING(cmap.yomi);
@@ -367,7 +394,7 @@ int main(int argc, char **argv) {
             case 's':
                 CHECK_VERB_NOT_SET;
                 MAYBE_CRITERIUM(C_SPELLING);
-                if( STRINGISNULL(cmap.spelling) == 0 ) {
+                if( cmap.spelling != NULL ) {
                     fprintf(stderr, "Warning: overriding previous argument of -s with '%s'\n",
                             optarg);
                     FREESTRING(cmap.spelling);
@@ -377,7 +404,7 @@ int main(int argc, char **argv) {
             case 't':
                 CHECK_VERB_NOT_SET;
                 MAYBE_CRITERIUM(C_WT);
-                if( STRINGISNULL(cmap.wordtype) == 0 ) {
+                if( cmap.wordtype != NULL ) {
                     fprintf(stderr, "Warning: overriding previous argument of -t with '%s'\n",
                             optarg);
                     FREESTRING(cmap.wordtype);
@@ -415,6 +442,26 @@ int main(int argc, char **argv) {
 
     switch( cmap.verb ) {
         case VERB_ADD:
+            puts("VERB_ADD");
+            if( cmap.yomi == NULL || cmap.spelling == NULL ) {
+                fprintf(stderr,
+                        "Error: add (-a): too few arguments.\n");
+                err = -3;
+                break;
+            }
+            if( cmap.wordtype == NULL ) {
+                assert((cmap.wordtype = malloc(sizeof(String))) != NULL);
+                cmap.wordtype = String_copy_free_src(cmap.wordtype, String_fromChar(g_default_wordtype));
+                fprintf(stdout,
+                        "add: optional wordtype (-t) option defaults to: %s\n",
+                        g_default_wordtype);
+            }
+            if( cmap.frequency == -1 ) {
+                cmap.frequency = g_deffreq;
+                fprintf(stdout,
+                        "add: optional frequency (-f) option defaults to: %d\n",
+                        g_deffreq);
+            }
             err = verb_add(&cmap, &dic);
             if( err != 0 )
                 fprintf(stderr,
