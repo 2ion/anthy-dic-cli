@@ -28,7 +28,7 @@
 #define BUFSIZE (512) // buffer length for dictionary fields
 #endif
 #ifndef DICCHUNK
-#define DICCHUNK (16) // allocate X dictionary entries at a time
+#define DICCHUNK (100) // allocate X dictionary entries at a time
 #endif
 #define ALLOCSTR(ptr) (ptr).p=(char*)malloc(sizeof(char)*BUFSIZE);assert((ptr).p!=NULL);(ptr).len=BUFSIZE
 #define FREESTR(ptr) if((ptr).p!=NULL){free((ptr).p);(ptr).len=0;}
@@ -64,7 +64,7 @@ typedef struct {
     Entry **p;
     int last;
     int oldlast; // last entry loaded from Anthy
-    size_t len;
+    int  len;
 } Dictionary;
 
 typedef struct {
@@ -160,13 +160,15 @@ static int Dictionary_resize(Dictionary *d) {
             return -1;
         d->len = DICCHUNK;
     }
-    if( (d->last+1) == d->len ) {
-        d->len += DICCHUNK * sizeof(Entry);
-        d->p = (Entry**) realloc(d->p, d->len);
+    if( (d->last+1) == (d->len*DICCHUNK) ) {
+        d->len += DICCHUNK;
+        d->p = (Entry**) realloc(d->p, d->len*sizeof(Entry));
         if( d->p == NULL ) {
-            d->len -= DICCHUNK * sizeof(Entry);
+            d->len -= DICCHUNK;
             return -1;
         }
+//        printf("resize: len=%d len/chunk=%d chunk=%d\n",
+//                d->len, d->len/DICCHUNK, DICCHUNK);
     }
     return 0;
 }
@@ -227,6 +229,12 @@ static int Dictionary_load(Dictionary *d) {
     } while( anthy_priv_dic_select_next_entry() == 0 );
     d->oldlast = d->last; 
     return 0;
+}
+
+static int Dictionary_save(Dictionary *d) {
+    assert(d != NULL);
+    if( d->last == d->oldlast )
+        return 0;
 }
 
 static String* String_fromChar(const char *str) {
