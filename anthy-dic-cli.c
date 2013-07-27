@@ -44,7 +44,7 @@ int g_anthy_version = 0;
 const int g_minfreq = 1;
 const int g_maxfreq = 1000;
 const int g_deffreq = 500;
-const char *g_optstring = "y:s:t:f:amdgl+";
+const char *g_optstring = "y:s:t:f:amdglD+";
 
 /* types */
 
@@ -76,7 +76,7 @@ typedef struct {
     int frequency;
 } CLIMap;
 
-enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_DICLEN, VERB_NULL };
+enum { VERB_ADD, VERB_MOD, VERB_DEL, VERB_GREP, VERB_DICLEN, VERB_NULL, VERB_DEBUGREPORT };
 enum { C_YOMI = 1<<0, C_WT = 1<<1, C_SPELLING = 1<<2, C_FREQ = 1<<3 }; // CLIMAP::cmask
 
 /* prototypes */
@@ -96,6 +96,7 @@ static int Dictionary_load(Dictionary*);
 static int Dictionary_save(Dictionary*);
 static int verb_add(const CLIMap*, Dictionary*);
 static int verb_diclen(const Dictionary*);
+static void verb_debugreport(const Dictionary*);
 static void usage(void);
 
 /* implementation */
@@ -271,6 +272,19 @@ static int verb_diclen(const Dictionary *d) {
     return 0;
 }
 
+static void verb_debugreport(const Dictionary *d) {
+    printf( " *********************\n"
+            "     STATUS REPORT    \n"
+            " *********************\n"
+            "\n"
+            " Dictionary: entries = %d\n"
+            " Dictionary: memory chunk width = %d entries\n"
+            " Dictionary: memory chunk size = %lu bytes\n"
+            " Dictionary: memory chunks wasted = %d\n",
+            d->last, DICCHUNK, sizeof(Entry)*DICCHUNK,
+            d->len/DICCHUNK);
+}
+
 static void usage(void) {
     printf( "Usage: anthy-dic-cli <verb> [<verb-options>]\n"
             "Verbs: [add]           -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]\n"
@@ -278,6 +292,7 @@ static void usage(void) {
             "       [delete]        -d <add-like filter expression>\n"
             "       [grep]          -g <add-like filter expression>\n"
             "       [dict length]   -l\n"
+            "       [debug report]  -D\n"
             "       -h\n");
 }
 
@@ -308,6 +323,10 @@ int main(int argc, char **argv) {
 #define MAYBE_CRITERIUM(cval) if(cmap.verb==VERB_MOD && endofcriteria==0){cmap.cmask|=(cval);}
     while( (c = getopt(argc, argv, g_optstring)) != -1 )
         switch( c ) {
+            case 'D':
+                VERB_NO_OVERWRITE;
+                cmap.verb = VERB_DEBUGREPORT;
+                break;
             case 'a':
                 VERB_NO_OVERWRITE;
                 cmap.verb = VERB_ADD;
@@ -407,6 +426,9 @@ int main(int argc, char **argv) {
             if( err != 0 )
                 fprintf(stderr,
                         "Warning: call to printf() returned an error\n");
+            break;
+        case VERB_DEBUGREPORT:
+            verb_debugreport(&dic);
             break;
     }
 
