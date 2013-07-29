@@ -454,7 +454,7 @@ int main(int argc, char **argv) {
                 cmap.wordtype = String_copy_free_src(cmap.wordtype, String_fromChar(g_default_wordtype));
                 fprintf(stdout,
                         "add: optional wordtype (-t) option defaults to: %s\n",
-                        g_default_wordtype);
+                        cmap.wordtype->p);
             }
             if( cmap.frequency == -1 ) {
                 cmap.frequency = g_deffreq;
