@@ -4,7 +4,13 @@
 #include "Dic.h"
 #include "globals.h"
 
+int verb_add(const KCmdLineArgs *args, Dic *d);
+int verb_sel(const KCmdLineArgs *args, Dic *d);
+int verb_mod(const KCmdLineArgs *args, Dic *d);
+int verb_del(const KCmdLineArgs *args, Dic *d);
+
 int main(int argc, char *argv[]) {
+    int verb;
     if( argc == 1 ) {
         std::cout << "Too few arguments. Specify the --help option for usage information." << std::endl;
         return 1;
@@ -20,13 +26,22 @@ int main(int argc, char *argv[]) {
     KCmdLineArgs *args = KCmdLineArgs::parsedArgs();
     switch( (args->arg(0).toLocal8Bit().data())[0] ) {
         case 'm':
+            verb = V_MOD;
+            break;
         case 'a':
+            verb = V_ADD;
+            break
         case 'd':
+            verb = V_DEL;
+            break;
         case 's':
+            verb = V_SEL;
             break;
         default:
             qFatal("Unknown verb: %s. Specify the --help option for usage information.", args->arg(0));
             return 1;
     }
+    Dic dictionary;
+
     return 0;
 }

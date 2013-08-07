@@ -1,16 +1,19 @@
 #ifndef DIC_H
 #define DIC_H
 
+#include <QtDebug>
 #include <QList>
 #include <QString>
 #include <QPair>
 #include <QRegExp>
+#include <anthy/anthy.h>
+#include <anthy/dicutil.h>
 #include <Entry.h>
 
 class Dic {
     public:
-        Dic(){}
-        ~Dic(){}
+        Dic();
+        ~Dic();
         int load();
         int save();
         QList<Entry*> entries();
@@ -33,11 +36,13 @@ class Dic {
                 const QPair<int,int> &freqrange);
     private:
         int normalize_freq(int freq);
+        QList<Entry*> data;
         const int g_maxfreq = 1000;
         const int g_minfreq = 0;
         const int g_deffreq = 0;
         int old_head;
         int head;
+        int anthy_version;
 };
 
 #endif
