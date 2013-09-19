@@ -80,6 +80,10 @@ function Dictionary:normalize_freq(f)
     return f
 end
 
+function Dictionary:entries()
+    return self.data
+end
+
 local function usage()
     print([[Usage: anthy-cli <verb> [<verb options>]
 Verbs: [add]                -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]
@@ -103,6 +107,30 @@ end
 local function verb_status(D)
     printf{"Anthy version: %d\nDictionary entries: %d",
         Anthy_version, #D.data}
+end
+
+-- Dump
+local function verb_grep(D, y, s, t, f)
+    local D = D
+    local m = {}
+    local c = {
+        y = y and y or nil,
+        s = s and s or nil,
+        t = t and t or nil,
+        f = f and f or nil
+    }
+    for _,e in ipairs(D:entries()) do
+        local flag = true
+        for k,v in pairs(c) do
+            if k == "y" then flag = (e[k] == y and true or false)
+            elseif k == "s" then flag = (e[k] == s and true or false)
+            elseif k == "t" then flag = (e[k] == t and true or false)
+            elseif k == "f" then flag = (e[k] == f and true or false)
+            end
+        end
+        if flag == true then table.insert(m, e) else flag = true end
+    end
+    return m
 end
 
 init()
@@ -190,8 +218,15 @@ local err, errmsg = D:load()
 
 if not err then
     eprintf{errmsg}
-else
-    verb_status(D)
+    os.exit(1)
 end
+
+--[[
+if Cli.verb == "status" then
+    verb_status(D)
+elseif Cli.verb == "add" then
+    verb_add(D, 
+    --]]
+
 
 cleanup()
