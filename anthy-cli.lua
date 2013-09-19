@@ -1,6 +1,7 @@
 #!/usr/bin/luajit
 
 local ffi = require("ffi")
+local getopt = require("getopt")
 
 ffi.cdef[[
 extern const char* anthy_get_version_string(void);
@@ -105,6 +106,84 @@ local function verb_status(D)
 end
 
 init()
+
+-- PARSE THE COMMAND LINE
+
+local Cli = {}
+local noop = getopt{
+    {
+        a = { "h", "help" },
+        f = function (t)
+            usage()
+            os.exit(0)
+        end
+    },
+    {
+        a = { "i", "info" },
+        f = function (t)
+            Cli.verb = "info"
+        end
+    },
+    {
+        a = { "m", "modify" },
+        f = function (t)
+            Cli.verb = "modify"
+        end
+    },
+    {
+        a = { "d", "delete" },
+        f = function (t)
+            Cli.verb = "delete"
+        end
+    },
+    {
+        a = { "a", "add" },
+        f = function (t)
+            Cli.verb = "add"
+        end
+    },
+    {
+        a = { "g", "grep" },
+        f = function (t)
+            Cli.verb = "grep"
+        end
+    },
+    {
+        a = { "+", "mod" },
+        f = function (t)
+            Cli.mod = {}
+        end
+    },
+    {
+        a = { "y", "yomi" },
+        f = function (t)
+            if Cli.mod then Cli.mod.y = t[1] else Cli.y = t[1] end
+        end,
+        g = 1
+    },
+    {
+        a = { "s", "spelling" },
+        f = function (t)
+            if Cli.mod then Cli.mod.s = t[1] else Cli.s = t[1] end
+        end,
+        g = 1
+    },
+    {
+        a = { "f", "freq" },
+        f = function (t)
+            if Cli.mod then Cli.mod.f = t[1] else Cli.f = t[1] end
+        end,
+        g = 1
+    },
+    {
+        a = { "t", "type" },
+        f = function (t)
+            if Cli.mod then Cli.mod.t = t[1] else Cli.t = t[1] end
+        end,
+        g = 1
+    }
+}
+
 
 local D = Dictionary.new()
 local err, errmsg = D:load()
