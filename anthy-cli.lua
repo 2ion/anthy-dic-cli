@@ -1,4 +1,21 @@
 #!/usr/bin/luajit
+--[[
+    anthy-cli.lua - CLI for manipulating the Anthy user dictionary
+    Copyright Jens Oliver John <base64:YXN0ZXJpc2tAMmlvbi5kZQ==>
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+--]]
 
 local ffi = require("ffi")
 local getopt = require("getopt")
@@ -29,6 +46,14 @@ int anthy_priv_dic_add_entry(const char *yomi, const char *word, const char *wt,
 
 local function printf(t) print(string.format(unpack(t))) end
 local function eprintf(t) print("Error:"..string.format(unpack(t))) end
+local function reverse(t)
+    local a = {}
+    local b = #t + 1
+    for k,v in ipairs(t) do
+        a[b-k] = v
+    end
+    return a
+end
 local Anthy = ffi.load("anthy")
 local Anthy_version = 0
 local Dictionary = {}
@@ -81,6 +106,51 @@ function Dictionary:load()
     return true
 end
 
+function Dictionary:save()
+
+end
+
+function Dictionary:match(Cli)
+    local Cli = Cli
+    local m = {}
+    local c = {
+        y = Cli.y,
+        s = Cli.s,
+        t = Cli.t,
+        f = Cli.f and tonumber(Cli.f) or nil
+    }
+
+    for i,e in ipairs(self:entries()) do
+        local flag = true
+        for k,v in pairs(c) do
+            if e[k] ~= c[k] then flag = false end
+        end
+        if flag then table.insert(m, { e, idx = i}) else flag = true end
+    end
+
+    return m
+end
+
+function Dictionary:delete(Cli)
+    local Cli = Cli
+    self.deleted = {}
+
+    m = self:match(Cli)
+
+    if #m == 0 then
+        printf{ "No matching entries." }
+        return false
+    end
+
+    for _,e in ipairs(reverse(m)) do
+        local i = e.idx
+        table.insert(self.deleted, i)
+        table.remove(self.data[i])
+    end
+
+    return true
+end
+
 function Dictionary:normalize_freq(f)
     if f > 1000 then
         return 1000
@@ -92,6 +162,43 @@ end
 
 function Dictionary:entries()
     return self.data
+end
+
+local function init()
+    Anthy.anthy_dic_util_init()
+    Anthy.anthy_dic_util_set_encoding(2)
+    Anthy_version = tonumber(ffi.string(Anthy.anthy_get_version_string()):sub(1,-2))
+end
+
+local function cleanup()
+    Anthy.anthy_dic_util_quit()
+end
+
+local function verb_status(D)
+    printf{"Anthy version: %d\nDictionary entries: %d",
+        Anthy_version, #D.data}
+end
+
+local function verb_grep(D, Cli)
+    local Cli = Cli
+    if not Cli.format then Cli.format = "%y -- %s -- %t -- %f" end
+    
+    local m = D:match(Cli)
+
+    -- output
+    local o = ""
+    for _,e in ipairs(m) do
+    local p = Cli.format:gsub("%%([ystf])", e[1])
+    o = o .. p .. '\n'
+    end
+
+    io.output():write(o)
+
+    return true
+end
+
+local function verb_delete(D, Cli)
+    return D:delete(Cli)
 end
 
 local function usage()
@@ -110,58 +217,9 @@ Verbs: [add]                -a -s <spelling> -y <yomi> [-f <frequency>] [-t <typ
        <output format> := printf-like format string, anchors: %s %y %f %t]])
 end
 
-local function init()
-    Anthy.anthy_dic_util_init()
-    Anthy.anthy_dic_util_set_encoding(2)
-    Anthy_version = tonumber(ffi.string(Anthy.anthy_get_version_string()):sub(1,-2))
-end
-
-local function cleanup()
-    Anthy.anthy_dic_util_quit()
-end
-
-local function verb_status(D)
-    printf{"Anthy version: %d\nDictionary entries: %d",
-        Anthy_version, #D.data}
-end
-
--- Dump
-local function verb_grep(D, Cli)
-    local D = D
-    local Cli = Cli
-    if not Cli.format then Cli.format = "%y -- %s -- %t -- %f" end
-    local m = {}
-    local c = {
-        y = Cli.y,
-        s = Cli.s,
-        t = Cli.t,
-        f = Cli.f and tonumber(Cli.f) or nil
-    }
-
-    -- find matches and add them to m
-    for _,e in ipairs(D:entries()) do
-        local flag = true
-        for k,v in pairs(c) do
-            if e[k] ~= c[k] then flag = false end
-        end
-        if flag then table.insert(m, e) else flag = true end
-    end
-
-    -- output
-    local o = ""
-    for _,e in ipairs(m) do
-    local p = Cli.format:gsub("%%([ystf])", e)
-    o = o .. p .. '\n'
-    end
-
-    io.output():write(o)
-
-    return true
-end
+-- MAIN
 
 init()
-
--- PARSE THE COMMAND LINE
 
 local Cli = {}
 local noop = getopt{
@@ -249,7 +307,8 @@ if Cli.verb == "info" then
     verb_status(D)
 elseif Cli.verb == "grep" then
     verb_grep(D, Cli)
-
+elseif Cli.verb == "delete" then
+    verb_delete(D, Cli)
 end
 
 cleanup()
