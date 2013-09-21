@@ -42,6 +42,55 @@ char *anthy_priv_dic_get_word(char *buf, int len);
 int anthy_priv_dic_add_entry(const char *yomi, const char *word, const char *wt, int freq);
 ]]
 
+local wtypes = {
+    Noun = {
+        ["#T35"] = "General Noun",
+        ["#T00"] = "followed by NA, SA and SURU",
+        ["#T05"] = "followed by NA and SA",
+        ["#T10"] = "followed by NA and SURU",
+        ["#T15"] = "followed by NA",
+        ["#T30"] = "followed by SURU"
+    },
+    ["Proper Noun"] = {
+        ["#JN"] = "Personal Name",
+        ["#CN"] = "Geographic Name",
+        ["#KK"] = "Corporate Name"
+    },
+    ["Numeral"] = "#NN",
+    ["Adjective"] = "#KY",
+    ["Adverb"] = {
+        ["#F02"] = "followed by TO and TARU",
+        ["#F04"] = "followed by TO and SURU",
+        ["#F06"] = "followed by TO",
+        ["#F012"] = "followed by SURU"
+    },
+    ["Interjection"] = "#CJ",
+    ["Adnominal Adjunct"] = "#RT",
+    ["Single Kanji Character"] = "#KJ",
+    ["Verb"] = {
+        ["#K5"] = "KA 5",
+        ["#G5"] = "GA 5",
+        ["#S5"] = "SA 5",
+        ["#T5"] = "TA 5",
+        ["#N5"] = "NA 5",
+        ["#B5"] = "BA 5",
+        ["#M5"] = "MA 5",
+        ["#R5"] = "RA 5",
+        ["#W5"] = "WA 5"
+    },
+    ["Verb*"] = {
+        ["#K5r"] = "KA 5",
+        ["#G5r"] = "GA 5",
+        ["#S5r"] = "SA 5",
+        ["#T5r"] = "TA 5",
+        ["#N5r"] = "NA 5",
+        ["#B5r"] = "BA 5",
+        ["#M5r"] = "MA 5",
+        ["#R5r"] = "RA 5",
+        ["#W5r"] = "WA 5"
+    }
+}
+
 -- MAIN
 
 local function printf(t) print(string.format(unpack(t))) end
@@ -54,9 +103,24 @@ local function reverse(t)
     end
     return a
 end
+local function remap_wt()
+    local by_key = { __len = 0 }
+    for cat,v in pairs(wtypes) do
+        if type(v) == "table" then
+            for tkey, info in pairs(v) do
+                by_key[tkey] = string.format("%s:%s", cat, info)
+                by_key.__len = by_key.__len + 1
+            end
+        else
+            by_key[cat] = v
+            by_key.__len = by_key.__len + 1
+        end
+    end
+    return by_key
+end
 local Anthy = ffi.load("anthy")
 local Anthy_version = 0
-local Dictionary = {}
+local Dictionary = { tcodes = remap_wt() }
 local Entry = {}
 
 function Entry:new(s, y, t, f)
@@ -106,8 +170,29 @@ function Dictionary:load()
     return true
 end
 
+-- Modification: Addition + deletion
 function Dictionary:save()
+    -- Additions
+    if #self.data > self.data_oldlast then
+        for i=self.data_oldlast+1,#self.data do
+            local e = self.data[i]
+            Anthy.anthy_priv_dic_add_entry(e.y, e.s, e.t, e.f)
+        end
+    end
 
+    -- Deletions
+    if self.deleted then
+        for _,i in ipairs(self.deleted) do
+            local j = 1
+            Anthy.anthy_priv_dic_select_first_entry()
+            while j < i do
+                Anthy.anthy_priv_dic_select_next_entry()
+                j = j + 1
+            end
+            Anthy.anthy_priv_dic_delete()
+        end
+    end
+    return #self.data - self.data_oldlast, self.deleted and #self.deleted or 0
 end
 
 function Dictionary:match(Cli)
@@ -141,6 +226,12 @@ function Dictionary:delete(Cli)
         printf{ "No matching entries." }
         return false
     end
+    
+    for _,e in ipairs(m) do
+        printf{"SELECT: %s", e[1]:tostring()}
+    end
+
+    io.read("*a")
 
     for _,e in ipairs(reverse(m)) do
         local i = e.idx
@@ -175,14 +266,16 @@ local function cleanup()
 end
 
 local function verb_status(D)
-    printf{"Anthy version: %d\nDictionary entries: %d",
-        Anthy_version, #D.data}
+    printf{[[Anthy version: %d
+Dictionary entries: %d
+Word type codes: %d]],
+        Anthy_version, #D.data, D.tcodes.__len}
 end
 
 local function verb_grep(D, Cli)
     local Cli = Cli
     if not Cli.format then Cli.format = "%y -- %s -- %t -- %f" end
-    
+
     local m = D:match(Cli)
 
     -- output
@@ -205,7 +298,7 @@ local function usage()
     print([[anthy-cli
 Copyright (C) 2013 Jens Oliver John <base64:am9qQDJpb24uZGUK>
 Licensed under the GNU General Public License v3 or later.
-    
+ 
 Usage: anthy-cli <verb> [<verb options>]
 Verbs: [add]                -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]
        [modify]             -m <add-like filter expression> -+ <modifiers>
@@ -213,7 +306,7 @@ Verbs: [add]                -a -s <spelling> -y <yomi> [-f <frequency>] [-t <typ
        [grep]               -g <add-like filter expression> [-F <output format>]
        [status report]      -s
        [usage]              -h
-       
+
        <output format> := printf-like format string, anchors: %s %y %f %t]])
 end
 
@@ -310,5 +403,8 @@ elseif Cli.verb == "grep" then
 elseif Cli.verb == "delete" then
     verb_delete(D, Cli)
 end
+
+local a, d = D:save()
+printf{"%d addition(s), %d deletion(s)", a, d}
 
 cleanup()
