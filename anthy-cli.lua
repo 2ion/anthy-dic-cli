@@ -277,8 +277,11 @@ end
 local function verb_status(D)
     printf{[[Anthy version: %d
 Dictionary entries: %d
-Word type codes: %d]],
-        Anthy_version, #D.data, D.tcodes.__len}
+Word type codes: %d
+%s on %s (%s)
+--]],
+        Anthy_version, #D.data, D.tcodes.__len,
+        jit.version, jit.os, jit.arch}
 end
 
 local function verb_grep(D, Cli)
@@ -404,7 +407,6 @@ local noop = getopt{
         g = 1
     }
 }
-
 
 local D = Dictionary.new()
 local err, errmsg = D:load()
