@@ -1,0 +1,1 @@
+- split the selection algorithm from verb_grep into a select() function

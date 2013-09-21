@@ -75,7 +75,6 @@ function Dictionary:load()
         local spelling = _(Anthy.anthy_priv_dic_get_word)
         local wtype = _(Anthy.anthy_priv_dic_get_wtype)
         local freq = self:normalize_freq(Anthy.anthy_priv_dic_get_freq())
---        printf{"[+] y=%s s=%s t=%s f=%d", yomi, spelling, wtype, freq}
         table.insert(self.data, Entry:new(spelling, yomi, wtype, freq))
     until Anthy.anthy_priv_dic_select_next_entry() ~= 0
     self.data_oldlast = #self.data
@@ -246,7 +245,7 @@ if Cli.debug then
     print("===================")
 end
 
-if Cli.verb == "status" then
+if Cli.verb == "info" then
     verb_status(D)
 elseif Cli.verb == "grep" then
     verb_grep(D, Cli)
