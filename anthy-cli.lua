@@ -95,6 +95,11 @@ local wtypes = {
 
 local function printf(t) print(string.format(unpack(t))) end
 local function eprintf(t) print("Error:"..string.format(unpack(t))) end
+local function prettyprint(Cli, str)
+    local p = io.popen(string.format("column -s %s -t", Cli.delim), "w")
+    p:write(str)
+    p:close()
+end
 local function reverse(t)
     local a = {}
     local b = #t + 1
@@ -255,6 +260,10 @@ function Dictionary:entries()
     return self.data
 end
 
+function Dictionary:typestr(k)
+    return self.tcodes[k]
+end
+
 local function init()
     Anthy.anthy_dic_util_init()
     Anthy.anthy_dic_util_set_encoding(2)
@@ -274,18 +283,25 @@ end
 
 local function verb_grep(D, Cli)
     local Cli = Cli
-    if not Cli.format then Cli.format = "%y -- %s -- %t -- %f" end
+    Cli.delim = Cli.delim or "--"
+    if not Cli.format then Cli.format = "%y%C%s%C%t%C%f" end
 
     local m = D:match(Cli)
 
     -- output
     local o = ""
     for _,e in ipairs(m) do
-    local p = Cli.format:gsub("%%([ystf])", e[1])
+    local p = Cli.format:gsub("%%([Cystf])", {
+        y = e[1].y,
+        s = e[1].s,
+        f = e[1].f,
+        t = D:typestr(e[1].t),
+        C = Cli.delim
+    })
     o = o .. p .. '\n'
     end
 
-    io.output():write(o)
+    prettyprint(Cli, o)
 
     return true
 end
@@ -374,6 +390,11 @@ local noop = getopt{
     {
         a = { "debug" },
         f = function () Cli.debug = true end
+    },
+    {
+        a = { "D", "delim" },
+        f = function (t) Cli.delim = t[1] end,
+        g = 1
     }
 }
 
