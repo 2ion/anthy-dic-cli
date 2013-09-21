@@ -322,8 +322,15 @@ Verbs: [add]                -a -s <spelling> -y <yomi> [-f <frequency>] [-t <typ
        [grep]               -g <add-like filter expression> [-F <output format>]
        [status report]      -s
        [usage]              -h
+       [column delimiter]   -D <string>
 
-       <output format> := printf-like format string, anchors: %s %y %f %t]])
+       <output format> := printf-like format string. Placeholders are as follows:
+            %s  spelling
+            %y  yomi, reading of the entry
+            %t  wordtype of the entry as a human-readable string
+            %T  wordtype of the entry as a Anthy-specific category code
+            %f  word frequency
+            %C  column delimiter, creates column for pretty-printing]])
 end
 
 -- MAIN
