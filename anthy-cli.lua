@@ -11,6 +11,7 @@ static const int ANTHY_DIC_UTIL_DUPLICATE = -2;
 static const int ANTHY_DIC_UTIL_INVALID = -3;
 void anthy_dic_util_init(void);
 void anthy_dic_util_quit(void);
+
 void anthy_dic_util_set_personality(const char *);
 const char *anthy_dic_util_get_anthydir(void);
 int anthy_dic_util_set_encoding(int);
@@ -36,8 +37,17 @@ local Entry = {}
 function Entry:new(s, y, t, f)
     local o = {}
     setmetatable(o, { __index = Entry})
-    o.s, o.y, o.t, o.f = s, y, t, f
+--    o.s, o.y, o.t, o.f = s, y, t, f
+    o.s = s
+    o.y = y
+    o.t = t
+    o.f = f
+--    print(string.format("[++] %s %s %s %d", o.y, o.s, o.t, f))
     return o
+end
+
+function Entry:tostring()
+    return string.format("y=%s -- s=%s, t=%s, f=%d", self.y, self.s, self.t, self.f)
 end
 
 function Dictionary:new()
@@ -61,11 +71,12 @@ function Dictionary:load()
         return nil, "Dictionary:load(): Could not access dictionary"
     end
     repeat
-        table.insert(self.data, Entry.new(
-            _(Anthy.anthy_priv_dic_get_word),
-            _(Anthy.anthy_priv_dic_get_index),
-            _(Anthy.anthy_priv_dic_get_wtype),
-            self:normalize_freq(Anthy.anthy_priv_dic_get_freq())))
+        local yomi = _(Anthy.anthy_priv_dic_get_index)
+        local spelling = _(Anthy.anthy_priv_dic_get_word)
+        local wtype = _(Anthy.anthy_priv_dic_get_wtype)
+        local freq = self:normalize_freq(Anthy.anthy_priv_dic_get_freq())
+--        printf{"[+] y=%s s=%s t=%s f=%d", yomi, spelling, wtype, freq}
+        table.insert(self.data, Entry:new(spelling, yomi, wtype, freq))
     until Anthy.anthy_priv_dic_select_next_entry() ~= 0
     self.data_oldlast = #self.data
     return true
@@ -85,13 +96,19 @@ function Dictionary:entries()
 end
 
 local function usage()
-    print([[Usage: anthy-cli <verb> [<verb options>]
+    print([[anthy-cli
+Copyright (C) 2013 Jens Oliver John <base64:am9qQDJpb24uZGUK>
+Licensed under the GNU General Public License v3 or later.
+    
+Usage: anthy-cli <verb> [<verb options>]
 Verbs: [add]                -a -s <spelling> -y <yomi> [-f <frequency>] [-t <type>]
-       [modify]             -m <add-like filter expression, -- := end of criteria>
+       [modify]             -m <add-like filter expression> -+ <modifiers>
        [delete]             -d <add-like filter expression>
-       [grep]               -g <add-like filter expression, -- := end of criteria>
+       [grep]               -g <add-like filter expression> [-F <output format>]
        [status report]      -s
-       [usage]              -h]])
+       [usage]              -h
+       
+       <output format> := printf-like format string, anchors: %s %y %f %t]])
 end
 
 local function init()
@@ -110,27 +127,37 @@ local function verb_status(D)
 end
 
 -- Dump
-local function verb_grep(D, y, s, t, f)
+local function verb_grep(D, Cli)
     local D = D
+    local Cli = Cli
+    if not Cli.format then Cli.format = "%y -- %s -- %t -- %f" end
     local m = {}
     local c = {
-        y = y and y or nil,
-        s = s and s or nil,
-        t = t and t or nil,
-        f = f and f or nil
+        y = Cli.y,
+        s = Cli.s,
+        t = Cli.t,
+        f = Cli.f and tonumber(Cli.f) or nil
     }
+
+    -- find matches and add them to m
     for _,e in ipairs(D:entries()) do
         local flag = true
         for k,v in pairs(c) do
-            if k == "y" then flag = (e[k] == y and true or false)
-            elseif k == "s" then flag = (e[k] == s and true or false)
-            elseif k == "t" then flag = (e[k] == t and true or false)
-            elseif k == "f" then flag = (e[k] == f and true or false)
-            end
+            if e[k] ~= c[k] then flag = false end
         end
-        if flag == true then table.insert(m, e) else flag = true end
+        if flag then table.insert(m, e) else flag = true end
     end
-    return m
+
+    -- output
+    local o = ""
+    for _,e in ipairs(m) do
+    local p = Cli.format:gsub("%%([ystf])", e)
+    o = o .. p .. '\n'
+    end
+
+    io.output():write(o)
+
+    return true
 end
 
 init()
@@ -141,59 +168,40 @@ local Cli = {}
 local noop = getopt{
     {
         a = { "h", "help" },
-        f = function (t)
-            usage()
-            os.exit(0)
-        end
+        f = function (t) usage(); os.exit(0) end
     },
     {
         a = { "i", "info" },
-        f = function (t)
-            Cli.verb = "info"
-        end
+        f = function (t) Cli.verb = "info" end
     },
     {
         a = { "m", "modify" },
-        f = function (t)
-            Cli.verb = "modify"
-        end
+        f = function (t) Cli.verb = "modify" end
     },
     {
         a = { "d", "delete" },
-        f = function (t)
-            Cli.verb = "delete"
-        end
+        f = function (t) Cli.verb = "delete" end
     },
     {
         a = { "a", "add" },
-        f = function (t)
-            Cli.verb = "add"
-        end
+        f = function (t) Cli.verb = "add" end
     },
     {
         a = { "g", "grep" },
-        f = function (t)
-            Cli.verb = "grep"
-        end
+        f = function (t) Cli.verb = "grep" end
     },
     {
         a = { "+", "mod" },
-        f = function (t)
-            Cli.mod = {}
-        end
+        f = function (t) Cli.mod = {} end
     },
     {
         a = { "y", "yomi" },
-        f = function (t)
-            if Cli.mod then Cli.mod.y = t[1] else Cli.y = t[1] end
-        end,
+        f = function (t) if Cli.mod then Cli.mod.y = t[1] else Cli.y = t[1] end end,
         g = 1
     },
     {
         a = { "s", "spelling" },
-        f = function (t)
-            if Cli.mod then Cli.mod.s = t[1] else Cli.s = t[1] end
-        end,
+        f = function (t) if Cli.mod then Cli.mod.s = t[1] else Cli.s = t[1] end end,
         g = 1
     },
     {
@@ -205,10 +213,17 @@ local noop = getopt{
     },
     {
         a = { "t", "type" },
-        f = function (t)
-            if Cli.mod then Cli.mod.t = t[1] else Cli.t = t[1] end
-        end,
+        f = function (t) if Cli.mod then Cli.mod.t = t[1] else Cli.t = t[1] end end,
         g = 1
+    },
+    {
+        a = { "F", "format" },
+        f = function (t) Cli.format = t[1] end,
+        g = 1
+    },
+    {
+        a = { "debug" },
+        f = function () Cli.debug = true end
     }
 }
 
@@ -221,12 +236,21 @@ if not err then
     os.exit(1)
 end
 
---[[
+if Cli.debug then
+    print("===================")
+    print("Debug: pairs(t_Cli)")
+    print("===================")
+    for k,v in pairs(Cli) do
+        print(k,v)
+    end
+    print("===================")
+end
+
 if Cli.verb == "status" then
     verb_status(D)
-elseif Cli.verb == "add" then
-    verb_add(D, 
-    --]]
+elseif Cli.verb == "grep" then
+    verb_grep(D, Cli)
 
+end
 
 cleanup()
