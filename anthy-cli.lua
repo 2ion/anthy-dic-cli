@@ -175,27 +175,11 @@ function Dictionary:load()
     return true
 end
 
--- Modification: Addition + deletion
 function Dictionary:save()
-    -- Additions
-    if #self.data > self.data_oldlast then
-        for i=self.data_oldlast+1,#self.data do
-            local e = self.data[i]
-            Anthy.anthy_priv_dic_add_entry(e.y, e.s, e.t, e.f)
-        end
-    end
-
-    -- Deletions
-    if self.deleted then
-        for _,i in ipairs(self.deleted) do
-            local j = 1
-            Anthy.anthy_priv_dic_select_first_entry()
-            while j < i do
-                Anthy.anthy_priv_dic_select_next_entry()
-                j = j + 1
-            end
-            Anthy.anthy_priv_dic_delete()
-        end
+    Anthy.anthy_priv_dic_delete()
+    for _,e in ipairs(self.data) do
+        Anthy.anthy_priv_dic_add_entry(e.y, e.s, e.t, e.f)
+        print(e.y)
     end
     return #self.data - self.data_oldlast, self.deleted and #self.deleted or 0
 end
@@ -236,12 +220,10 @@ function Dictionary:delete(Cli)
         printf{"SELECT: %s", e[1]:tostring()}
     end
 
-    io.read("*a")
-
     for _,e in ipairs(reverse(m)) do
         local i = e.idx
         table.insert(self.deleted, i)
-        table.remove(self.data[i])
+        self.data[i] = nil
     end
 
     return true
